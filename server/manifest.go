@@ -13,7 +13,7 @@ var manifest *model.Manifest
 
 const manifestStr = `
 {
-  "id": "com.kanka-dev.voice-notes",
+  "id": "dev.kanka.voice-notes",
   "name": "Voice Notes",
   "description": "Record and share voice messages directly in Mattermost channels.",
   "homepage_url": "https://github.com/kanka-dev/mattermost-plugin-voice-notes",

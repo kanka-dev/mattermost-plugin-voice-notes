@@ -139,6 +139,6 @@ When reporting a bug, please include:
 
 ## License
 
-[MIT](LICENSE) © 2026 kanka-dev
+[MIT](LICENSE) © 2026 kanka.dev
 
 This plugin is not affiliated with, endorsed by, or supported by Mattermost, Inc.

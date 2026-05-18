@@ -6,4 +6,4 @@ declare global {
     }
 }
 
-window.registerPlugin('com.kanka-dev.voice-notes', new VoiceNotesPlugin());
+window.registerPlugin('dev.kanka.voice-notes', new VoiceNotesPlugin());

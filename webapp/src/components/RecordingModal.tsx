@@ -1,9 +1,9 @@
 import React, {useState, useRef, useEffect, useCallback} from 'react';
 
-const PLUGIN_ID = 'com.kanka-dev.voice-notes';
+const PLUGIN_ID = 'dev.kanka.voice-notes';
 const API_BASE = `/plugins/${PLUGIN_ID}/api/v1`;
 
-type RecordingState = 'idle' | 'requesting' | 'recording' | 'uploading' | 'error';
+type RecordingState = 'idle' | 'requesting' | 'recording' | 'preview' | 'uploading' | 'error';
 
 interface Props {
     channelId: string;
@@ -22,16 +22,20 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
     const [maxDuration, setMaxDuration] = useState(300);
     const [errorMsg, setErrorMsg] = useState('');
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-    const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<BlobPart[]>([]);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+
+    const isDesktopApp = navigator.userAgent.includes('Electron');
 
     // Fetch plugin config on mount
     useEffect(() => {
-        fetch(`${API_BASE}/config`)
+        fetch(`${API_BASE}/config`, {credentials: 'include'})
             .then((r) => r.json())
             .then((cfg) => {
                 if (cfg && cfg.MaxDurationSeconds) {
@@ -87,7 +91,7 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
             recorder.onstop = () => {
                 const blob = new Blob(chunksRef.current, {type: mimeType || 'audio/webm'});
                 setAudioBlob(blob);
-                setAudioUrl(URL.createObjectURL(blob));
+                setState('preview');
             };
 
             recorder.start(250); // collect data every 250ms
@@ -100,9 +104,15 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
             cleanup();
             setState('error');
             if (err.name === 'NotAllowedError') {
-                setErrorMsg('Microphone access was denied. Please allow microphone access in your browser settings.');
+                if (isDesktopApp) {
+                    setErrorMsg('__DESKTOP_NO_MIC__');
+                } else {
+                    setErrorMsg('Microphone access was denied. Please click the lock icon in your browser\'s address bar and allow microphone access, then try again.');
+                }
             } else if (err.name === 'NotFoundError') {
                 setErrorMsg('No microphone found. Please connect a microphone and try again.');
+            } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                setErrorMsg('Your browser or app does not support microphone recording. Please use a modern browser like Chrome, Firefox, or Edge.');
             } else {
                 setErrorMsg(`Could not access microphone: ${err.message}`);
             }
@@ -127,10 +137,18 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
         stopRecording();
         cleanup();
         setAudioBlob(null);
-        setAudioUrl(null);
+        stopPreview();
         setElapsed(0);
         setState('idle');
         onClose();
+    };
+
+    const getAuthToken = (): string => {
+        try {
+            return localStorage.getItem('MMAUTHTOKEN') || '';
+        } catch {
+            return '';
+        }
     };
 
     const sendVoiceNote = async () => {
@@ -139,13 +157,17 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
         }
         setState('uploading');
         try {
+            const token = getAuthToken();
             const url = `${API_BASE}/upload?channel_id=${encodeURIComponent(channelId)}&duration_ms=${elapsed * 1000}`;
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': audioBlob.type || 'audio/webm',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    ...(token ? {Authorization: `Bearer ${token}`} : {}),
                 },
                 body: audioBlob,
+                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -161,12 +183,45 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
         }
     };
 
-    const retryRecording = () => {
-        setAudioBlob(null);
-        if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
+    const stopPreview = useCallback(() => {
+        try {
+            if (sourceNodeRef.current) {
+                sourceNodeRef.current.stop();
+                sourceNodeRef.current = null;
+            }
+            if (audioCtxRef.current) {
+                audioCtxRef.current.close();
+                audioCtxRef.current = null;
+            }
+        } catch { /* ignore */ }
+        setIsPlaying(false);
+    }, []);
+
+    const playPreview = useCallback(async () => {
+        if (!audioBlob) {
+            return;
         }
-        setAudioUrl(null);
+        stopPreview();
+        try {
+            const ctx = new AudioContext();
+            audioCtxRef.current = ctx;
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(ctx.destination);
+            source.onended = () => setIsPlaying(false);
+            sourceNodeRef.current = source;
+            source.start(0);
+            setIsPlaying(true);
+        } catch {
+            setIsPlaying(false);
+        }
+    }, [audioBlob, stopPreview]);
+
+    const retryRecording = () => {
+        stopPreview();
+        setAudioBlob(null);
         setElapsed(0);
         setState('idle');
     };
@@ -288,22 +343,26 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
                 )}
 
                 {/* Preview + send */}
-                {audioUrl && (state === 'idle' || state === 'uploading') && audioBlob && (
+                {(state === 'preview' || state === 'uploading') && audioBlob && (
                     <div style={{padding: '8px 0'}}>
-                        <p style={{fontSize: '13px', opacity: 0.7, marginBottom: '10px'}}>
-                            {'Preview your recording:'}
+                        <p style={{fontSize: '13px', opacity: 0.7, marginBottom: '12px'}}>
+                            {'Recording complete — preview or send:'}
                         </p>
-                        <audio
-                            controls={true}
-                            src={audioUrl}
-                            style={{width: '100%', marginBottom: '16px'}}
-                        />
-                        <p style={{fontSize: '12px', opacity: 0.6, marginBottom: '16px'}}>
-                            {'Duration: '}
-                            <strong>{formatTime(elapsed)}</strong>
-                            {' · Size: '}
-                            <strong>{`${(audioBlob.size / 1024).toFixed(1)} KB`}</strong>
-                        </p>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px'}}>
+                            <button
+                                className='btn btn-tertiary'
+                                onClick={isPlaying ? stopPreview : playPreview}
+                                disabled={state === 'uploading'}
+                                style={{minWidth: '120px'}}
+                            >
+                                {isPlaying ? '⏹ Stop' : '▶ Play Preview'}
+                            </button>
+                            <span style={{fontSize: '12px', opacity: 0.6}}>
+                                {formatTime(elapsed)}
+                                {' · '}
+                                {`${(audioBlob.size / 1024).toFixed(1)} KB`}
+                            </span>
+                        </div>
                         <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
                             <button
                                 className='btn btn-tertiary'
@@ -323,8 +382,43 @@ const RecordingModal: React.FC<Props> = ({channelId, onClose}) => {
                     </div>
                 )}
 
-                {/* Error */}
-                {state === 'error' && (
+                {/* Error: Desktop App mic denied */}
+                {state === 'error' && errorMsg === '__DESKTOP_NO_MIC__' && (
+                    <div style={{padding: '4px 0'}}>
+                        <p style={{fontSize: '14px', fontWeight: 600, margin: '0 0 8px', color: '#d24b4e'}}>
+                            {'Microphone access denied'}
+                        </p>
+                        <p style={{fontSize: '13px', lineHeight: 1.6, margin: '0 0 8px'}}>
+                            {'1. Close this dialog'}
+                        </p>
+                        <p style={{fontSize: '13px', lineHeight: 1.6, margin: '0 0 8px'}}>
+                            {'2. Look for a permission bar at the top of the Mattermost window and click Allow'}
+                        </p>
+                        <p style={{fontSize: '13px', lineHeight: 1.6, margin: '0 0 16px'}}>
+                            {'3. Open the recording dialog again'}
+                        </p>
+                        <p style={{fontSize: '12px', opacity: 0.6, margin: '0 0 16px'}}>
+                            {'If no permission bar appears: Windows Settings → Privacy & Security → Microphone → enable "Let desktop apps access your microphone"'}
+                        </p>
+                        <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
+                            <button
+                                className='btn btn-tertiary'
+                                onClick={cancelRecording}
+                            >
+                                {'Close'}
+                            </button>
+                            <button
+                                className='btn btn-primary'
+                                onClick={retryRecording}
+                            >
+                                {'Try Again'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Error: generic */}
+                {state === 'error' && errorMsg !== '__DESKTOP_NO_MIC__' && (
                     <div style={{
                         background: 'rgba(210,75,78,0.1)',
                         border: '1px solid rgba(210,75,78,0.3)',

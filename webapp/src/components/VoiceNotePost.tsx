@@ -1,6 +1,6 @@
-import React, {useRef, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 
-const PLUGIN_ID = 'com.kanka-dev.voice-notes';
+const PLUGIN_ID = 'dev.kanka.voice-notes';
 
 interface Post {
     id: string;
@@ -57,6 +57,23 @@ const VoiceNotePost: React.FC<Props> = ({post}) => {
     const [error, setError] = useState(false);
 
     const audioSrc = `/plugins/${PLUGIN_ID}/api/v1/audio/${post.id}`;
+
+    // Hide the native Mattermost file attachment that appears when FileIds is set.
+    // FileIds must stay set for proper file lifecycle management (data retention etc.),
+    // but we don't want the duplicate UI below our custom player.
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.dataset.voiceNotePost = post.id;
+        style.textContent = [
+            `[data-post-id="${post.id}"] .post-image__columns`,
+            `[data-post-id="${post.id}"] .file-view`,
+            `[data-post-id="${post.id}"] .post__attachments`,
+        ].join(', ') + ' { display: none !important; }';
+        document.head.appendChild(style);
+        return () => {
+            document.head.removeChild(style);
+        };
+    }, [post.id]);
 
     const durationMsProp = post.props?.duration_ms;
     const estimatedDurationMs = durationMsProp ? Number(durationMsProp) : 0;

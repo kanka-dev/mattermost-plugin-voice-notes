@@ -15,7 +15,7 @@ import (
 
 const (
 	postTypeVoiceNote = "custom_voice_note"
-	pluginID          = "com.kanka-dev.voice-notes"
+	pluginID          = "dev.kanka.voice-notes"
 )
 
 var rePostID = regexp.MustCompile(`^[A-Za-z0-9]{26}$`)
@@ -28,7 +28,6 @@ func (p *Plugin) initRouter() *mux.Router {
 	apiV1.HandleFunc("/config", p.handleGetConfig).Methods(http.MethodGet)
 	apiV1.HandleFunc("/upload", p.handleUpload).Methods(http.MethodPost)
 	apiV1.HandleFunc("/audio/{postId}", p.handleGetAudio).Methods(http.MethodGet)
-
 	return r
 }
 
@@ -115,6 +114,9 @@ func (p *Plugin) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a custom post with the voice-note type.
+	// FileIds is set so Mattermost manages the file lifecycle correctly:
+	// data retention policies apply and the file is not an orphan.
+	// The native attachment UI is suppressed in VoiceNotePost on the client side.
 	post := &model.Post{
 		UserId:    userID,
 		ChannelId: channelID,
