@@ -28,12 +28,22 @@ jobs:
           cache: 'npm'
           cache-dependency-path: webapp/package-lock.json
 
+      - name: Download Go modules
+        run: go mod download
+
       - name: Install webapp dependencies
         run: npm ci
         working-directory: webapp
 
+      - name: Create build/bin directory
+        run: mkdir -p build/bin
+
       - name: Build plugin
         run: make dist
+
+      - name: List dist directory
+        if: always()
+        run: ls -lah dist/ || echo "dist/ does not exist"
 
       - name: Get plugin version
         id: version
