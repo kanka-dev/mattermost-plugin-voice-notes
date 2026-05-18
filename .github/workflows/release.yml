@@ -40,6 +40,8 @@ jobs:
 
       - name: Build plugin
         run: make dist
+        env:
+          GO_BUILD_FLAGS: "-ldflags='-s -w'"
 
       - name: List dist directory
         if: always()
