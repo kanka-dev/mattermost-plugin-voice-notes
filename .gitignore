@@ -1,0 +1,8 @@
+dist/
+server/dist/
+webapp/dist/
+webapp/node_modules/
+build/bin/
+bin/
+*.tar.gz
+.DS_Store
