@@ -1,0 +1,76 @@
+name: Bug Report
+description: Report a problem with the Voice Notes plugin
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as possible.
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options:
+        - Web browser (Chrome)
+        - Web browser (Firefox)
+        - Web browser (Edge)
+        - Mattermost Desktop App
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser_version
+    attributes:
+      label: Browser / App version
+      placeholder: "e.g. Chrome 124, Mattermost Desktop 5.9"
+    validations:
+      required: true
+
+  - type: input
+    id: mattermost_version
+    attributes:
+      label: Mattermost server version
+      placeholder: "e.g. 10.5.1 — found in Help → About Mattermost"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: Plugin version
+      placeholder: "e.g. 1.0.0 — found in System Console → Plugins"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Click the microphone icon
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console errors (if any)
+      description: Open DevTools → Console and paste any red errors here.
+      render: text
